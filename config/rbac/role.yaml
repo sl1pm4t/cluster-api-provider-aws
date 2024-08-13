@@ -452,6 +452,7 @@ rules:
     - get
     - list
     - delete
+    - watch
 - apiGroups:
     - controlplane.cluster.x-k8s.io
   resources:
