@@ -28,7 +28,7 @@ const podIdentityNamespace = "kube-system"
 // 3. deploy pod identity webhook components with mounted certs (rbac,deployment,mwh,service).
 func (s *Service) reconcilePodIdentityWebhook(ctx context.Context) error {
 	certName := fmt.Sprintf(PodIdentityWebhookCertificateFormat, s.scope.Name())
-	certSecret, err := certificateSecret(ctx,
+	certSecret, err := s.certificateSecret(ctx,
 		certName, s.scope.Namespace(),
 		fmt.Sprintf(SelfsignedIssuerFormat, s.scope.Name()), []string{
 			fmt.Sprintf("%s.%s.svc", podIdentityWebhookName, podIdentityNamespace),

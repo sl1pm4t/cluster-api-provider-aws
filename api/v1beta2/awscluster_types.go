@@ -109,7 +109,7 @@ type AWSClusterSpec struct {
 	// cluster - Used  for nodes requiring Ignition
 	// (https://coreos.github.io/ignition/) for bootstrapping (requires
 	// BootstrapFormatIgnition feature flag to be enabled) and for storing OIDC endpoint
-	// certificates for use with IRSA
+	// certificates for use with IRSA (requires OIDCProviderSupport feature flag to be enabled)
 	// +optional
 	S3Bucket *S3Bucket `json:"s3Bucket,omitempty"`
 
