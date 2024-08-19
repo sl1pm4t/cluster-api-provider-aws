@@ -5,11 +5,13 @@ import (
 	"context"
 	"crypto/sha1"
 	"crypto/tls"
+	"encoding/json"
 	stderr "errors"
 	"fmt"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"k8s.io/utils/ptr"
 	"path"
+	v1beta13 "sigs.k8s.io/cluster-api/controlplane/kubeadm/api/v1beta1"
 	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -31,13 +33,35 @@ import (
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	v1beta12 "sigs.k8s.io/cluster-api/bootstrap/kubeadm/api/v1beta1"
 	"sigs.k8s.io/cluster-api/controllers/remote"
-	v1beta13 "sigs.k8s.io/cluster-api/controlplane/kubeadm/api/v1beta1"
 )
 
 const (
 	jwksKey                 = "/openid/v1/jwks"
 	opendIDConfigurationKey = "/.well-known/openid-configuration"
 )
+
+type oidcDiscovery struct {
+	Issuer                string   `json:"issuer"`
+	JWKSURI               string   `json:"jwks_uri"`
+	AuthorizationEndpoint string   `json:"authorization_endpoint"`
+	ResponseTypes         []string `json:"response_types_supported"`
+	SubjectTypes          []string `json:"subject_types_supported"`
+	SigningAlgs           []string `json:"id_token_signing_alg_values_supported"`
+	ClaimsSupported       []string `json:"claims_supported"`
+}
+
+func buildDiscoveryJSON(issuerURL string) ([]byte, error) {
+	d := oidcDiscovery{
+		Issuer:                issuerURL,
+		JWKSURI:               fmt.Sprintf("%v/openid/v1/jwks", issuerURL),
+		AuthorizationEndpoint: "urn:kubernetes:programmatic_authorization",
+		ResponseTypes:         []string{"id_token"},
+		SubjectTypes:          []string{"public"},
+		SigningAlgs:           []string{"RS256"},
+		ClaimsSupported:       []string{"sub", "iss"},
+	}
+	return json.MarshalIndent(d, "", "")
+}
 
 func (s *Service) certificateSecret(ctx context.Context, name, namespace, issuer string, dnsNames []string, client client.Client) (*corev1.Secret, error) {
 	// check if the secret was already created
@@ -136,6 +160,11 @@ func deleteCertificatesAndIssuer(ctx context.Context, name, namespace string, cl
 	return nil
 }
 
+func (s *Service) buildIssuerURL() string {
+	// e.g. s3-us-west-2.amazonaws.com/<bucketname>/<clustername>
+	return fmt.Sprintf("https://s3.%s.amazonaws.com/%s/%s", s.scope.Region(), s.scope.Bucket().Name, s.scope.Name())
+}
+
 func (s *Service) reconcileBucketContents(ctx context.Context) error {
 	clusterKey := client.ObjectKey{
 		Name:      s.scope.Name(),
@@ -155,16 +184,19 @@ func (s *Service) reconcileBucketContents(ctx context.Context) error {
 		return err
 	}
 
-	s3scope := s3.NewService(s.scope)
-	conf, err := get(ctx, clientSet, opendIDConfigurationKey)
+	// create the OpenID Connect discovery document
+	openIDConfig, err := buildDiscoveryJSON(s.buildIssuerURL())
 	if err != nil {
 		return err
 	}
 
-	if _, err := s3scope.CreatePublic("/"+path.Join(s.scope.Name(), opendIDConfigurationKey), []byte(conf)); err != nil {
+	s3scope := s3.NewService(s.scope)
+
+	if _, err := s3scope.CreatePublic("/"+path.Join(s.scope.Name(), opendIDConfigurationKey), openIDConfig); err != nil {
 		return err
 	}
 
+	// retrieve Service Account Issuer signing keys from workload cluster API
 	jwks, err := get(ctx, clientSet, jwksKey)
 	if err != nil {
 		return err
