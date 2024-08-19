@@ -79,14 +79,6 @@ func (s *Service) ReconcileOIDCProvider(ctx context.Context) error {
 		return errors.New("s3 bucket configuration required to associate oidc provider")
 	}
 
-	if err := s.reconcileSelfsignedIssuer(ctx); err != nil {
-		return err
-	}
-
-	if err := s.reconcileKubeAPIParameters(ctx); err != nil {
-		return err
-	}
-
 	if err := s.reconcileIdentityProvider(ctx); err != nil {
 		return err
 	}
@@ -100,10 +92,6 @@ func (s *Service) ReconcileOIDCProvider(ctx context.Context) error {
 
 	log.Info("Associating OIDC Provider continuing, kubeconfig for the workload cluster is available")
 	if err := s.reconcileBucketContents(ctx); err != nil {
-		return err
-	}
-	log.Info("Creating PodIdentityWebhook addon")
-	if err := s.reconcilePodIdentityWebhook(ctx); err != nil {
 		return err
 	}
 
@@ -132,10 +120,6 @@ func (s *Service) DeleteOIDCProvider(ctx context.Context) error {
 		if err := s.deleteBucketContents(s3.NewService(s.scope)); err != nil {
 			return err
 		}
-	}
-
-	if err := deleteCertificatesAndIssuer(ctx, s.scope.Name(), s.scope.Namespace(), s.scope.ManagementClient()); err != nil {
-		return err
 	}
 
 	return deleteOIDCProvider(s.scope.OIDCProviderStatus().ARN, s.IAMClient)
