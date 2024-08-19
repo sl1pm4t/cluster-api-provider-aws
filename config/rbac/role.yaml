@@ -443,17 +443,6 @@ rules:
   - patch
   - update
 - apiGroups:
-  - cert-manager.io
-  resources:
-  - certificates
-  - issuers
-  verbs:
-    - create
-    - get
-    - list
-    - delete
-    - watch
-- apiGroups:
     - controlplane.cluster.x-k8s.io
   resources:
     - kubeadmcontrolplanes
