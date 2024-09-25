@@ -9,6 +9,45 @@ permissions:
   contents: write # required to write to github release.
 
 jobs:
+  build-and-push-image:
+    runs-on: ubuntu-latest
+    env:
+      REGISTRY: ghcr.io
+      IMAGE_NAME: ${{ github.repository }}/cluster-api-aws-controller
+
+    permissions:
+      contents: read
+      packages: write
+      attestations: write
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Log in to the Container registry
+        uses: docker/login-action@65b78e6e13532edd9afa3aa52ac7964289d1a9c1
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@9ec57ed1fcdbf14dcef7dfbe97b2010124a938b7
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+
+      - name: Build and push Docker image
+        id: push
+        uses: docker/build-push-action@f2a1d5e99d037542a71f64918e516c093c6f3fc4
+        with:
+          context: .
+          push: true
+          build-args: |
+            builder_image=golang:1.21.5
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
   release:
     name: Create draft release
     runs-on: ubuntu-latest
@@ -33,6 +72,16 @@ jobs:
           echo "Previous version is: $PREVIOUS_VERSION"
           echo "Release branch is: $RELEASE_BRANCH"
           echo "Release tag is: $RELEASE_TAG"
-          make release
+          make release-manifests
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Instead of `make VERSION="${RELEASE_TAG}" create-gh-release upload-gh-artifacts`, which requires GitHub CLI
+      # authentication, use an action which does the same.
+      - name: Release
+        uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # tag=v1
+        with:
+          draft: true
+          files: out/*
+          body: "This fork does not provide release changelogs."
+          # `name` not needed since this takes the tag by default (which we also use above as ${RELEASE_TAG})
