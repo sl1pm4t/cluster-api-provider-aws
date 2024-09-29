@@ -58,6 +58,7 @@ func (s *Service) reconcileIdentityProvider(_ context.Context) error {
 	}
 
 	providerStatus.ARN = arn
+	providerStatus.IssuerURL = s.buildIssuerURL()
 	oidcTrustPolicy := buildOIDCTrustPolicy(providerStatus.ARN)
 	policy, err := converters.IAMPolicyDocumentToJSON(oidcTrustPolicy)
 	if err != nil {
