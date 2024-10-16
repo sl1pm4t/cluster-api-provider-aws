@@ -294,9 +294,9 @@ func (r *AWSMachineReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Ma
 
 	requeueAWSMachinesForUnpausedCluster := r.requeueAWSMachinesForUnpausedCluster(log)
 	return managedController.Watch(
-		source.Kind(mgr.GetCache(), &clusterv1.Cluster{}),
-		handler.EnqueueRequestsFromMapFunc(requeueAWSMachinesForUnpausedCluster),
-		predicates.ClusterUnpausedAndInfrastructureReady(log.GetLogger()),
+		source.Kind[client.Object](mgr.GetCache(), &clusterv1.Cluster{},
+			handler.EnqueueRequestsFromMapFunc(requeueAWSMachinesForUnpausedCluster),
+			predicates.ClusterUnpausedAndInfrastructureReady(log.GetLogger())),
 	)
 }
 

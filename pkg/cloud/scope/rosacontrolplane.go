@@ -20,8 +20,11 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
+	stsv2 "github.com/aws/aws-sdk-go-v2/service/sts"
+	awssession "github.com/aws/aws-sdk-go/aws/session"
 	awsclient "github.com/aws/aws-sdk-go/aws/client"
-	"github.com/aws/aws-sdk-go/service/sts"
 	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -83,8 +86,33 @@ func NewROSAControlPlaneScope(params ROSAControlPlaneScopeParams) (*ROSAControlP
 	managedScope.session = session
 	managedScope.serviceLimiters = serviceLimiters
 
-	stsClient := NewSTSClient(managedScope, managedScope, managedScope, managedScope.ControlPlane)
-	identity, err := stsClient.GetCallerIdentity(&sts.GetCallerIdentityInput{})
+	// Get AWS credentials from the v1 session
+	v1Session, ok := managedScope.session.(*awssession.Session)
+	if !ok {
+		return nil, fmt.Errorf("failed to get AWS session: expected *session.Session")
+	}
+	
+	v1Creds, err := v1Session.Config.Credentials.Get()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get AWS credentials: %w", err)
+	}
+
+	// Create AWS SDK v2 config
+	cfg, err := config.LoadDefaultConfig(context.TODO(),
+		config.WithRegion(params.ControlPlane.Spec.Region),
+		config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(
+			v1Creds.AccessKeyID,
+			v1Creds.SecretAccessKey,
+			v1Creds.SessionToken,
+		)),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create AWS SDK v2 config: %w", err)
+	}
+
+	// Create STS v2 client and get caller identity
+	stsClient := stsv2.NewFromConfig(cfg)
+	identity, err := stsClient.GetCallerIdentity(context.TODO(), &stsv2.GetCallerIdentityInput{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to identify the AWS caller: %w", err)
 	}
@@ -105,7 +133,7 @@ type ROSAControlPlaneScope struct {
 	session         awsclient.ConfigProvider
 	serviceLimiters throttle.ServiceLimiters
 	controllerName  string
-	Identity        *sts.GetCallerIdentityOutput
+	Identity        *stsv2.GetCallerIdentityOutput
 }
 
 // InfraCluster returns the AWSManagedControlPlane object.
